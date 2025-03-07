@@ -1,15 +1,15 @@
-import speech_recognition as sr
 import assemblyai as aai
 from typing import Dict, List, Tuple, Optional
 from transformers import pipeline
 
-# Your AssemblyAI API key
+# Your AssemblyAI API key (Not used here, but keep for reference)
 # In your settings.py or config file:
 AAI_API_KEY = "bf0c580ca5c74eb6a07cbca2ad2dc0ee"  # Replace placeholder
 
 class NLUModule:
     """
-    Natural Language Understanding Module for interpreting user commands
+    Natural Language Understanding Module for interpreting text commands
+    from a Flutter app.
     """
     def __init__(self):
         # Load intent classification model
@@ -31,15 +31,18 @@ class NLUModule:
             "app_switch": ["open", "switch to", "launch", "start"],
             "calendar": ["schedule", "appointment", "meeting", "reminder"],
             "transaction": ["send", "pay", "transfer", "purchase"],
-            "analysis": ["analyze", "report", "metrics", "statistics"]
+            "analysis": ["analyze", "report", "metrics", "statistics"],
+            "media_playback":["play", "pause", "stop", "next", "previous"],
+            "timer":["set a timer", "set an alarm"],
+            "web_search":["search", "look up", "find"] #add intents for web search
         }
     
     def parse_command(self, text: str) -> Dict:
         """
-        Parse a natural language command into structured intent and entities
+        Parse a text command into structured intent and entities
         
         Args:
-            text: User's natural language input
+            text: Text command from the Flutter app
             
         Returns:
             Dict containing intent, confidence, entities and parameters
@@ -148,6 +151,11 @@ class NLUModule:
             if grouping:
                 parameters["grouping"] = grouping
         
+        elif intent == "web_search": #extract search queries
+                query = text 
+                if query:
+                    parameters["query"] = query 
+        
         return parameters
     
     # Parameter extraction helper methods
@@ -219,224 +227,16 @@ class NLUModule:
         # Would implement grouping extraction logic
         return None
 
-class VoiceCommandProcessor:
-    def __init__(self):
-        self.recognizer = sr.Recognizer()
-        self.nlu_module = NLUModule()  
-
-    def process_command(self):
-        with sr.Microphone() as source:
-            print("Say something:")
-            audio = self.recognizer.listen(source)
-
-            try:
-                # Use AssemblyAI for speech-to-text
-                print("Sending audio to AssemblyAI...")
-                audio_data = audio.get_wav_data()
-                transcript = self._transcribe_with_assemblyai(audio_data)
-
-                if transcript:
-                    print("You said:", transcript)
-                    return self.nlu_module.parse_command(transcript)
-                else:
-                    print("No transcript received from AssemblyAI.")
-                    return {"error": "No transcript"}
-
-            except sr.UnknownValueError:
-                print("Could not understand audio")
-                return {"error": "Audio unclear"}
-            except sr.RequestError as e:
-                print(f"Could not request results; {e}")
-                return {"error": "Speech recognition service error"}
-            except Exception as e:
-                print(f"Error during transcription: {e}")
-                return {"error": "Transcription error"}
-
-    def _transcribe_with_assemblyai(self, audio_data):
-        """Transcribes audio using the AssemblyAI API."""
-        try:
-            transcriber = aai.Transcriber()
-            transcript = transcriber.transcribe(audio_data)
-            return transcript.text 
-        except Exception as e:
-            print(f"Error transcribing with AssemblyAI: {e}")
-            return None 
 
 if __name__ == "__main__":
-    processor = VoiceCommandProcessor()
+    nlu_module = NLUModule() 
     while True:
-        parsed_result = processor.process_command()
-        if 'error' not in parsed_result:
-            print("Parsed Result:", parsed_result)
-            
-            # Command handling logic
-            intent = parsed_result.get("intent")
-            parameters = parsed_result.get("parameters", {})
-            
-            # Application switching
-            if intent == "app_switch":
-                app_name = parameters.get("app_name", "").lower()
-                if app_name:
-                    print(f"Opening {app_name}...")
-                    # Cross-platform app opening
-                    import os
-                    import platform
-                    
-                    system = platform.system()
-                    if system == "Windows":
-                        os.system(f"start {app_name}")
-                    elif system == "Darwin":  # macOS
-                        os.system(f"open -a '{app_name}'")
-                    elif system == "Linux":
-                        os.system(f"{app_name} &")
-                    print(f"Attempted to open {app_name}")
-            
-            # Calendar operations
-            elif intent == "calendar":
-                action = parameters.get("action")
-                date = parameters.get("date")
-                event = parameters.get("event")
-                
-                # Import calendar integration library
-                try:
-                    import calendar_utils  # You'd need to create this module
-                    
-                    if action == "add" and date and event:
-                        calendar_utils.add_event(date, event)
-                        print(f"Added event '{event}' on {date}")
-                    elif action == "check" and date:
-                        events = calendar_utils.get_events(date)
-                        if events:
-                            print(f"Events on {date}:")
-                            for evt in events:
-                                print(f"- {evt}")
-                        else:
-                            print(f"No events scheduled for {date}")
-                except ImportError:
-                    print("Calendar functionality not available. Missing calendar_utils module.")
-            
-            # Weather information
-            elif intent == "weather":
-                location = parameters.get("location", "current")
-                date = parameters.get("date", "today")
-                
-                try:
-                    import requests
-                    
-                    # You would need to sign up for a weather API key
-                    API_KEY = "YOUR_WEATHER_API_KEY"
-                    
-                    if location.lower() == "current":
-                        # Get user's location based on IP (simplified)
-                        ip_response = requests.get("https://ipinfo.io/json")
-                        ip_data = ip_response.json()
-                        location = ip_data.get("city", "")
-                    
-                    # Make API request to weather service
-                    weather_url = f"https://api.weatherapi.com/v1/forecast.json?key={API_KEY}&q={location}&days=3"
-                    response = requests.get(weather_url)
-                    
-                    if response.status_code == 200:
-                        weather_data = response.json()
-                        if date.lower() == "today":
-                            temp = weather_data["current"]["temp_c"]
-                            condition = weather_data["current"]["condition"]["text"]
-                            print(f"Weather in {location}: {condition}, {temp}°C")
-                        else:
-                            print(f"Weather forecast for {location} on {date} is not implemented yet")
-                    else:
-                        print(f"Could not retrieve weather information. Error: {response.status_code}")
-                except Exception as e:
-                    print(f"Weather functionality error: {str(e)}")
-            
-            # Music or media playback
-            elif intent == "media_playback":
-                action = parameters.get("action")
-                song = parameters.get("song")
-                artist = parameters.get("artist")
-                
-                try:
-                    # This would integrate with your preferred music service
-                    import media_player  # You'd need to create this module
-                    
-                    if action == "play" and song:
-                        media_player.play(song=song, artist=artist)
-                        if artist:
-                            print(f"Playing '{song}' by {artist}")
-                        else:
-                            print(f"Playing '{song}'")
-                    elif action == "pause":
-                        media_player.pause()
-                        print("Paused playback")
-                    elif action == "stop":
-                        media_player.stop()
-                        print("Stopped playback")
-                    elif action == "next":
-                        media_player.next_track()
-                        print("Playing next track")
-                    elif action == "previous":
-                        media_player.previous_track()
-                        print("Playing previous track")
-                except ImportError:
-                    print("Media playback not available. Missing media_player module.")
-            
-            # Set timers or alarms
-            elif intent == "timer":
-                action = parameters.get("action")
-                duration = parameters.get("duration")  # in seconds
-                
-                import threading
-                import time
-                
-                def timer_done(duration_str):
-                    print(f"\nTimer for {duration_str} is done!")
-                    # Add sound notification here
-                
-                if action == "set" and duration:
-                    duration_str = str(duration)
-                    try:
-                        # Convert human-readable duration to seconds
-                        import re
-                        
-                        seconds = 0
-                        if isinstance(duration, str):
-                            # Parse strings like "2 hours 30 minutes"
-                            hours = re.search(r'(\d+)\s*hour', duration)
-                            minutes = re.search(r'(\d+)\s*minute', duration)
-                            secs = re.search(r'(\d+)\s*second', duration)
-                            
-                            if hours:
-                                seconds += int(hours.group(1)) * 3600
-                            if minutes:
-                                seconds += int(minutes.group(1)) * 60
-                            if secs:
-                                seconds += int(secs.group(1))
-                        else:
-                            seconds = int(duration)
-                        
-                        print(f"Setting timer for {duration_str}")
-                        timer_thread = threading.Thread(target=lambda: (time.sleep(seconds), timer_done(duration_str)))
-                        timer_thread.daemon = True
-                        timer_thread.start()
-                    except Exception as e:
-                        print(f"Failed to set timer: {str(e)}")
-            
-            # Web search
-            elif intent == "web_search":
-                query = parameters.get("query")
-                
-                if query:
-                    import webbrowser
-                    search_url = f"https://www.google.com/search?q={query.replace(' ', '+')}"
-                    webbrowser.open(search_url)
-                    print(f"Searching the web for: {query}")
-            
-            # Unknown intent
-            else:
-                print(f"Unknown intent: {intent}. I don't know how to handle this request.")
+        text_command = input("Enter a command (or 'exit' to quit): ")
+        if text_command.lower() == 'exit':
+            break 
         
-        else:
-            print("Error processing command:", parsed_result.get("error"))
-        
-        # Optional: add a way to exit the loop
-        print("Say another command or say 'exit' to quit")
+        parsed_result = nlu_module.parse_command(text_command)
+        print("Parsed Result:", parsed_result) 
+
+        #Now use the 'parsed_result' in your Flutter app. 
+        # You can send this data to your Flutter app. 
