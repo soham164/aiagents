@@ -93,7 +93,7 @@ async def approve_task(request: TaskApprovalRequest):
     # Find the task by ID
     found_task = None
     for task in tasks:
-        if task.get("task_id") == task_id:
+        if task.id == task_id:
             found_task = task
             break
     
@@ -103,16 +103,27 @@ async def approve_task(request: TaskApprovalRequest):
     if approved:
         # Execute the task
         try:
-            await execution_module.execute_task(found_task)
+            # Define callback functions
+            async def feedback_callback(message):
+                logger.info(f"Feedback from task execution: {message}")
+                return True
+                
+            async def approval_callback(approval_request):
+                logger.info(f"Approval request during execution: {approval_request}")
+                return True
+            
+            # Pass the task as part of a list to match the expected iterable
+            await execution_module.execute_tasks([found_task], feedback_callback, approval_callback)
+            
             session["status"] = "completed"
-            return {"message": f"Task '{found_task.get('description', '')}' approved and executed"}
+            return {"message": f"Task '{found_task.description}' approved and executed"}
         except Exception as e:
             logger.error(f"Error executing task: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Error executing task: {str(e)}")
     else:
         # Handle task rejection 
         session["status"] = "rejected"
-        return {"message": f"Task '{found_task.get('description', '')}' rejected"}
+        return {"message": f"Task '{found_task.description}' rejected"}
 
 
 @app.get("/")
